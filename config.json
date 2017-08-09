@@ -1,21 +1,26 @@
 {
     "seed" : 2017,
-    "save_path" : "examples/cornell_mdc/models/test",
+    "save_path" : "examples/cornell_mdc/models/small_test",
 
     "data" : {
-        "max_vocab_size" : 10000,
-        "train_set" : "examples/cornell_mdc/data/train.json",
+        "max_vocab_size" : 20000,
+        "train_set" : "examples/cornell_mdc/data/train_small.json",
         "dev_set" : "examples/cornell_mdc/data/dev.json"
     },
 
     "optimizer" : {
         "epochs" : 100,
-        "batch_size" : 8,
-        "learning_rate" : 1e-3,
+        "batch_size" : 32,
+        "learning_rate" : 1e-2,
         "momentum" : 0
     },
 
     "model" : {
+        "rnn_dim" : 512,
+        "embedding_dim" : 32,
+        "encoder_layers" : 2,
+        "bidirectional" : false,
+        "decoder_layers" : 1
     }
 }
 

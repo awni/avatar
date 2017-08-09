@@ -7,6 +7,8 @@ curl -O http://www.cs.cornell.edu/~cristian/data/{$dataset}.zip
 unzip ${dataset}.zip 
 
 # clean-up
-mv cornell\ movie-dialogs\ corpus/ data/
-rm -rf __MACOSX
+datadir=cornell\ movie-dialogs\ corpus
+mv ${datadir}/* data
+rm -r "${datadir}"
+rm -r __MACOSX
 rm -f ${dataset}.zip

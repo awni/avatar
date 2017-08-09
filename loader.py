@@ -5,6 +5,7 @@ from __future__ import print_function
 import json
 import random
 import numpy as np
+import nltk.tokenize as nltok
 import torch
 import torch.autograd as autograd
 import torch.utils.data as tud
@@ -28,10 +29,9 @@ class Preprocessor():
         data = read_data_json(data_json)
 
         # Build the vocabulary
-        # TODO, should clean up text a bit, lowercase, punctuation, etc.
         toks = [self.START, self.END, self.UNK]
         words = (word for conv in data for turn in conv
-                    for word in turn['text'].split())
+                    for word in turn['text'])
         vocab = collections.Counter(words)
         vocab = vocab.most_common(max_vocab_size - len(toks))
         vocab = [word for word, _ in vocab]
@@ -40,6 +40,10 @@ class Preprocessor():
         self.int_to_word = dict(enumerate(vocab))
         self.word_to_int = {v : k for k, v in self.int_to_word.items()}
         self.unk_idx = self.word_to_int[self.UNK]
+
+    @staticmethod
+    def tokenize(text):
+        return nltok.word_tokenize(text.lower())
 
     def encode(self, text):
         text = list(text)
@@ -56,8 +60,8 @@ class Preprocessor():
         return text[s:e]
 
     def preprocess(self, inputs, labels):
-        inputs = self.encode(inputs.split())
-        labels = self.encode(labels.split())
+        inputs = self.encode(inputs)
+        labels = self.encode(labels)
         return inputs, labels
 
     @property

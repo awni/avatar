@@ -47,7 +47,6 @@ def run_epoch(model, optimizer, train_ldr, it, avg_loss):
                 avg_loss=avg_loss, grad_norm=grad_norm,
                 model_time=model_t, data_time=data_t)
         it += 1
-        return
 
     return it, avg_loss
 

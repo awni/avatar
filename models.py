@@ -11,18 +11,17 @@ class Seq2Seq(nn.Module):
     def __init__(self, vocab_size, config):
         super(Seq2Seq, self).__init__()
 
-        # TODO, make this configurable.
         # TODO, add more decoder layers.
-        embed_dim = 16
-        rnn_dim = 128
+        embed_dim = config["embedding_dim"]
+        rnn_dim = config["rnn_dim"]
         self.embedding = nn.Embedding(vocab_size, embed_dim)
 
         # Encoding
         self.rnn = nn.GRU(input_size=embed_dim,
                           hidden_size=rnn_dim,
-                          num_layers=2,
+                          num_layers=config["encoder_layers"],
                           batch_first=True, dropout=False,
-                          bidirectional=False)
+                          bidirectional=config["bidirectional"])
 
         # For decoding
         self.dec_rnn = nn.GRUCell(embed_dim + rnn_dim, rnn_dim)
@@ -68,7 +67,7 @@ class Seq2Seq(nn.Module):
         ax = None
         for t in range(seq_len - 1):
             ix = inputs[:, t, :].squeeze(dim=1)
-            sx, ax = self.attend(x, hx, ax)
+            sx, ax = self.attend(x, hx)
             ix = torch.cat([ix, sx], dim=1)
             hx = self.dec_rnn(ix, hx)
             aligns.append(ax)
@@ -92,31 +91,10 @@ class Seq2Seq(nn.Module):
 
 class Attention(nn.Module):
 
-    def __init__(self, kernel_size=11):
-        """
-        Module which Performs a single attention step along the
-        second axis of a given encoded input. The module uses
-        both 'content' and 'location' based attention.
-
-        The 'content' based attention is an inner product of the
-        decoder hidden state with each time-step of the encoder
-        state.
-
-        The 'location' based attention performs a 1D convollution
-        on the previous attention vector and adds this into the
-        next attention vector prior to normalization.
-
-        *NB* Computes attention differently if using cuda or cpu
-        based on performance. See
-        https://gist.github.com/awni/9989dd31642d42405903dec8ab91d1f0
-        """
+    def __init__(self):
         super(Attention, self).__init__()
-        assert kernel_size % 2 == 1, \
-            "Kernel size should be odd for 'same' conv."
-        padding = (kernel_size - 1) // 2
-        self.conv = nn.Conv1d(1, 1, kernel_size, padding=padding)
 
-    def forward(self, eh, dhx, ax=None):
+    def forward(self, eh, dhx):
         """
         Arguments:
             eh (FloatTensor): the encoder hidden state with
@@ -125,8 +103,6 @@ class Attention(nn.Module):
                 state with shape (batch size, hidden dimension).
                 The hidden dimension must match that of the
                 encoder state.
-            ax (FloatTensor): one time step of the attention
-                vector.
 
         Returns the summary of the encoded hidden state
         and the corresponding alignment.
@@ -134,12 +110,8 @@ class Attention(nn.Module):
         # Compute inner product of decoder slice with every
         # encoder slice.
         dhx = dhx.unsqueeze(1)
-        pax = torch.sum(eh * dhx, dim=2)
-        if ax is not None:
-            ax = ax.unsqueeze(dim=1)
-            ax = self.conv(ax).squeeze(dim=1)
-            pax = pax + ax
-        ax = nn.functional.softmax(pax)
+        ax = torch.sum(eh * dhx, dim=2)
+        ax = nn.functional.softmax(ax)
 
         # At this point sx should have size (batch size, time).
         # Reduce the encoder state accross time weighting each

@@ -1,7 +1,9 @@
 
 import json
+import nltk.tokenize as nltok
 import os
 import random
+import tqdm
 
 SEP = " +++$+++ "
 
@@ -26,7 +28,11 @@ REPLACE = { # mix of character encodings in text..
     "\xb7" : "", "\xdf" : "", "\xa5" : "", "\x8a" : ""}
 
 def clean(text):
-    return "".join(REPLACE.get(t, t) for t in text)
+    # TODO, should probably move this into
+    # a shared function in the loader
+    line = "".join(REPLACE.get(t, t) for t in text)
+    line = line.lower()
+    return nltok.word_tokenize(line)
 
 def parse_convs(path):
     """
@@ -51,7 +57,7 @@ def parse_lines(path):
     character id and text.
     """
     lines = read_lines(path, "movie_lines.txt")
-    lines = {line[0] : (line[1], clean(line[-1]))
+    lines = {line[0] : (line[1], line[-1])
                 for line in lines}
     return lines
 
@@ -66,8 +72,8 @@ def split(data, dev_size=1000, test_size=1000):
 def save_json(path, name, dataset):
     file_name = os.path.join(path, name + ".json")
     with open(file_name, 'w') as fid:
-        for conv in dataset:
-            conv = [{ "text" : text, "char_id" : char}
+        for conv in tqdm.tqdm(dataset):
+            conv = [{"text" : clean(text), "char_id" : char}
                     for char, text in conv]
             json.dump(conv, fid)
             fid.write("\n")
@@ -83,7 +89,10 @@ if __name__ == "__main__":
 
     # Split conversations into train, val, test
     train, val, test = split(convs)
+    print("Cleaning and writing training set..")
     save_json(data_path, "train", train)
+    print("Cleaning and writing dev set..")
     save_json(data_path, "dev", val)
+    print("Cleaning and writing test set..")
     save_json(data_path, "test", test)
 
