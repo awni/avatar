@@ -17,14 +17,18 @@ class Seq2Seq(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_dim)
 
         # Encoding
-        self.rnn = nn.GRU(input_size=embed_dim,
+        self.enc_rnn = nn.GRU(input_size=embed_dim,
                           hidden_size=rnn_dim,
                           num_layers=config["encoder_layers"],
                           batch_first=True, dropout=False,
                           bidirectional=config["bidirectional"])
 
         # For decoding
-        self.dec_rnn = nn.GRUCell(embed_dim + rnn_dim, rnn_dim)
+        self.dec_rnn = nn.GRU(input_size=embed_dim + rnn_dim,
+                          hidden_size=rnn_dim,
+                          num_layers=config["decoder_layers"],
+                          batch_first=True, dropout=False,
+                          bidirectional=False)
         self.h_init = nn.Parameter(data=torch.zeros(1, rnn_dim))
         self.attend = Attention()
         self.fc = nn.Linear(rnn_dim, vocab_size)
@@ -50,7 +54,7 @@ class Seq2Seq(nn.Module):
 
     def encode(self, x):
         x = self.embedding(x)
-        x, h = self.rnn(x)
+        x, h = self.enc_rnn(x)
         return x
 
     def decode(self, x, y):
@@ -60,20 +64,19 @@ class Seq2Seq(nn.Module):
         """
         batch_size, seq_len = y.size()
         inputs = self.embedding(y[:, :-1])
-
-        hx = self.h_init.expand(batch_size, self.h_init.size()[1])
+        ox = self.h_init.expand(batch_size, 1, self.h_init.size()[1])
 
         out = []; aligns = []
-        ax = None
+        hx = None; ax = None
         for t in range(seq_len - 1):
-            ix = inputs[:, t, :].squeeze(dim=1)
-            sx, ax = self.attend(x, hx)
-            ix = torch.cat([ix, sx], dim=1)
-            hx = self.dec_rnn(ix, hx)
+            ix = inputs[:, t:t+1, :]
+            sx, ax = self.attend(x, ox)
+            ix = torch.cat([ix, sx], dim=2)
+            ox, hx = self.dec_rnn(ix, hx=hx)
             aligns.append(ax)
-            out.append(hx + sx)
+            out.append(ox + sx)
 
-        out = torch.stack(out, dim=1)
+        out = torch.cat(out, dim=1)
         b, t, h = out.size()
         out = out.view(b * t, h)
         out = self.fc(out)
@@ -100,7 +103,7 @@ class Attention(nn.Module):
             eh (FloatTensor): the encoder hidden state with
                 shape (batch size, time, hidden dimension).
             dhx (FloatTensor): one time step of the decoder hidden
-                state with shape (batch size, hidden dimension).
+                state with shape (batch size, 1, hidden dimension).
                 The hidden dimension must match that of the
                 encoder state.
 
@@ -109,7 +112,6 @@ class Attention(nn.Module):
         """
         # Compute inner product of decoder slice with every
         # encoder slice.
-        dhx = dhx.unsqueeze(1)
         ax = torch.sum(eh * dhx, dim=2)
         ax = nn.functional.softmax(ax)
 
@@ -117,7 +119,8 @@ class Attention(nn.Module):
         # Reduce the encoder state accross time weighting each
         # slice by its corresponding value in sx.
         sx = ax.unsqueeze(2)
-        sx = torch.sum(eh * ax.unsqueeze(dim=2), dim=1)
+        sx = torch.sum(eh * ax.unsqueeze(dim=2), dim=1,
+                       keepdim=True)
         return sx, ax
 
 if __name__ == "__main__":
@@ -133,6 +136,15 @@ if __name__ == "__main__":
     x = gen_fake_data((batch_size, out_t))
     y = gen_fake_data((batch_size, in_t))
 
-    model = Seq2Seq(vocab_size)
+    config = {
+        "rnn_dim" : 128,
+        "embedding_dim" : 128,
+        "encoder_layers" : 2,
+        "bidirectional" : False,
+        "decoder_layers" : 2
+    }
+
+    model = Seq2Seq(vocab_size, config)
     out = model.forward(x, y)
     loss = model.loss(out, y)
+
