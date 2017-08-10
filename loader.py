@@ -70,7 +70,8 @@ class Preprocessor():
 
 class Dataset(tud.Dataset):
 
-    def __init__(self, data_json, preproc, batch_size):
+    def __init__(self, data_json, preproc,
+                 batch_size, max_len=100):
 
         data = read_data_json(data_json)
         self.preproc = preproc
@@ -84,6 +85,8 @@ class Dataset(tud.Dataset):
         pairs = [preproc.preprocess(*pair) for pair in pairs]
 
         pairs.sort(key=lambda x : (len(x[0]), len(x[1])))
+        filt_fn = lambda x : all(len(i) < max_len for i in x)
+        pairs = filter(filt_fn, pairs)
         self.data = pairs
 
     def __len__(self):

@@ -11,7 +11,6 @@ class Seq2Seq(nn.Module):
     def __init__(self, vocab_size, config):
         super(Seq2Seq, self).__init__()
 
-        # TODO, add more decoder layers.
         embed_dim = config["embedding_dim"]
         rnn_dim = config["rnn_dim"]
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -42,11 +41,6 @@ class Seq2Seq(nn.Module):
         loss = loss / batch_size
         return loss
 
-    def cpu(self):
-        super(Model, self).cpu()
-        self.dec_rnn.bias_hh.data.squeeze_()
-        self.dec_rnn.bias_ih.data.squeeze_()
-
     def forward(self, x, y):
         x = self.encode(x)
         out, _ = self.decode(x, y)
@@ -64,10 +58,11 @@ class Seq2Seq(nn.Module):
         """
         batch_size, seq_len = y.size()
         inputs = self.embedding(y[:, :-1])
-        ox = self.h_init.expand(batch_size, 1, self.h_init.size()[1])
+        ox = self.h_init.expand(batch_size, 1,
+                self.h_init.size()[1])
 
         out = []; aligns = []
-        hx = None; ax = None
+        hx = None
         for t in range(seq_len - 1):
             ix = inputs[:, t:t+1, :]
             sx, ax = self.attend(x, ox)
@@ -85,12 +80,46 @@ class Seq2Seq(nn.Module):
         aligns = torch.cat(aligns, dim=0)
         return out, aligns
 
-    def predict(self, probs):
-        _, argmaxs = probs.max(dim=2)
-        if argmaxs.is_cuda:
-            argmaxs = argmaxs.cpu()
-        argmaxs = argmaxs.data.numpy()
-        return [seq.tolist() for seq in argmaxs]
+    def decode_step(self, x, y, hx=None):
+        """
+        x should be shape (batch, time, hidden dimension)
+        y should be shape (batch, 1)
+        """
+        ix = self.embedding(y)
+
+        if hx is None:
+            ox = self.h_init.expand(y.size()[0], 1,
+                    self.h_init.size()[1])
+        else:
+            # Get last layer's hidden state
+            ox = hx[-1, ...]
+            ox = ox.unsqueeze(dim=1)
+
+        sx, _ = self.attend(x, ox)
+        ix = torch.cat([ix, sx], dim=2)
+        ox, hx = self.dec_rnn(ix, hx=hx)
+        out = ox + sx
+
+        out = self.fc(out.squeeze(dim=1))
+        return out, hx
+
+    def decode_test(self, x, max_len=20):
+        # *NB* Assuming first slice of x is start token.
+        y = x[:, 0:1]
+        x = self.encode(x)
+        hx = None
+        labels = [y]
+        acts = []
+        for _ in range(max_len):
+            out, hx = self.decode_step(x, y, hx=hx)
+            acts.append(out)
+            _, y = torch.max(out, dim=1, keepdim=True)
+            labels.append(y)
+            # TODO, check if y already ended and stop
+
+        acts = torch.stack(acts, dim=1)
+        labels = torch.cat(labels, dim=1)
+        return labels, acts
 
 class Attention(nn.Module):
 
@@ -124,6 +153,9 @@ class Attention(nn.Module):
         return sx, ax
 
 if __name__ == "__main__":
+    torch.manual_seed(2017)
+    np.random.seed(2017)
+
     vocab_size = 100
     batch_size = 4
     in_t = 10
@@ -145,6 +177,15 @@ if __name__ == "__main__":
     }
 
     model = Seq2Seq(vocab_size, config)
-    out = model.forward(x, y)
+    out = model(x, y)
     loss = model.loss(out, y)
 
+    # Test the decode_test gives the same results as the regular
+    # decoder with the infered labels.
+    labels, acts = model.decode_test(x)
+    expected = model(x, labels)
+    assert expected.size() == acts.size(), "Size mismatch."
+    acts = acts.data.numpy()
+    exp = expected.data.numpy()
+    assert np.allclose(acts, exp, rtol=1e-7, atol=1e-7), \
+            "Results should be quite close."

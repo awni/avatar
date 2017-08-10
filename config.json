@@ -1,10 +1,10 @@
 {
     "seed" : 2017,
-    "save_path" : "examples/cornell_mdc/models/small_test",
+    "save_path" : "examples/cornell_mdc/models/rnn512_embed512",
 
     "data" : {
         "max_vocab_size" : 20000,
-        "train_set" : "examples/cornell_mdc/data/train_small.json",
+        "train_set" : "examples/cornell_mdc/data/train.json",
         "dev_set" : "examples/cornell_mdc/data/dev.json"
     },
 
@@ -17,10 +17,10 @@
 
     "model" : {
         "rnn_dim" : 512,
-        "embedding_dim" : 32,
+        "embedding_dim" : 512,
         "encoder_layers" : 2,
         "bidirectional" : false,
-        "decoder_layers" : 1
+        "decoder_layers" : 2
     }
 }
 
