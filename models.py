@@ -23,12 +23,11 @@ class Seq2Seq(nn.Module):
                           bidirectional=config["bidirectional"])
 
         # For decoding
-        self.dec_rnn = nn.GRU(input_size=embed_dim + rnn_dim,
+        self.dec_rnn = nn.GRU(input_size=embed_dim,
                           hidden_size=rnn_dim,
                           num_layers=config["decoder_layers"],
                           batch_first=True, dropout=False,
                           bidirectional=False)
-        self.h_init = nn.Parameter(data=torch.zeros(1, rnn_dim))
         self.attend = Attention()
         self.fc = nn.Linear(rnn_dim, vocab_size)
 
@@ -58,18 +57,18 @@ class Seq2Seq(nn.Module):
         """
         batch_size, seq_len = y.size()
         inputs = self.embedding(y[:, :-1])
-        ox = self.h_init.expand(batch_size, 1,
-                self.h_init.size()[1])
 
         out = []; aligns = []
         hx = None
         for t in range(seq_len - 1):
             ix = inputs[:, t:t+1, :]
-            sx, ax = self.attend(x, ox)
-            ix = torch.cat([ix, sx], dim=2)
+            # ix = ix + sx if sx is not None # could do input feeding..
+
             ox, hx = self.dec_rnn(ix, hx=hx)
+            sx, ax = self.attend(x, ox) # ox could be first or last h-state
+
             aligns.append(ax)
-            out.append(ox + sx)
+            out.append(ox + sx) # this could be a concat
 
         out = torch.cat(out, dim=1)
         b, t, h = out.size()
@@ -86,20 +85,9 @@ class Seq2Seq(nn.Module):
         y should be shape (batch, 1)
         """
         ix = self.embedding(y)
-
-        if hx is None:
-            ox = self.h_init.expand(y.size()[0], 1,
-                    self.h_init.size()[1])
-        else:
-            # Get last layer's hidden state
-            ox = hx[-1, ...]
-            ox = ox.unsqueeze(dim=1)
-
-        sx, _ = self.attend(x, ox)
-        ix = torch.cat([ix, sx], dim=2)
         ox, hx = self.dec_rnn(ix, hx=hx)
+        sx, _ = self.attend(x, ox)
         out = ox + sx
-
         out = self.fc(out.squeeze(dim=1))
         return out, hx
 
@@ -122,9 +110,6 @@ class Seq2Seq(nn.Module):
         return labels, acts
 
 class Attention(nn.Module):
-
-    def __init__(self):
-        super(Attention, self).__init__()
 
     def forward(self, eh, dhx):
         """
@@ -187,5 +172,5 @@ if __name__ == "__main__":
     assert expected.size() == acts.size(), "Size mismatch."
     acts = acts.data.numpy()
     exp = expected.data.numpy()
-    assert np.allclose(acts, exp, rtol=1e-7, atol=1e-7), \
+    assert np.allclose(acts, exp, rtol=1e-6, atol=1e-7), \
             "Results should be quite close."
