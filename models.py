@@ -55,12 +55,11 @@ class Seq2Seq(nn.Module):
         x should be shape (batch, time, hidden dimension)
         y should be shape (batch, label sequence length)
         """
-        batch_size, seq_len = y.size()
         inputs = self.embedding(y[:, :-1])
 
         out = []; aligns = []
         hx = None
-        for t in range(seq_len - 1):
+        for t in range(y.size()[1] - 1):
             ix = inputs[:, t:t+1, :]
             # ix = ix + sx if sx is not None # could do input feeding..
 
@@ -136,41 +135,3 @@ class Attention(nn.Module):
         sx = torch.sum(eh * ax.unsqueeze(dim=2), dim=1,
                        keepdim=True)
         return sx, ax
-
-if __name__ == "__main__":
-    torch.manual_seed(2017)
-    np.random.seed(2017)
-
-    vocab_size = 100
-    batch_size = 4
-    in_t = 10
-    out_t = 8
-    def gen_fake_data(shape):
-        d = np.random.randint(0, vocab_size, shape)
-        d = torch.from_numpy(d)
-        d = torch.autograd.Variable(d)
-        return d
-    x = gen_fake_data((batch_size, out_t))
-    y = gen_fake_data((batch_size, in_t))
-
-    config = {
-        "rnn_dim" : 128,
-        "embedding_dim" : 128,
-        "encoder_layers" : 2,
-        "bidirectional" : False,
-        "decoder_layers" : 2
-    }
-
-    model = Seq2Seq(vocab_size, config)
-    out = model(x, y)
-    loss = model.loss(out, y)
-
-    # Test the decode_test gives the same results as the regular
-    # decoder with the infered labels.
-    labels, acts = model.decode_test(x)
-    expected = model(x, labels)
-    assert expected.size() == acts.size(), "Size mismatch."
-    acts = acts.data.numpy()
-    exp = expected.data.numpy()
-    assert np.allclose(acts, exp, rtol=1e-6, atol=1e-7), \
-            "Results should be quite close."

@@ -148,14 +148,3 @@ def make_loader(dataset_json, preproc,
 def read_data_json(data_json):
     with open(data_json) as fid:
         return [json.loads(l) for l in fid]
-
-if __name__ == "__main__":
-    max_vocab_size = 10000
-    batch_size = 8
-    data_json = "examples/cornell_mdc/data/train.json"
-
-    preproc = Preprocessor(data_json, max_vocab_size)
-    loader = make_loader(data_json, preproc, batch_size)
-    for inputs, labels in loader:
-        assert inputs.size()[0] == labels.size()[0]
-        assert inputs.size()[0] == batch_size
