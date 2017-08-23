@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import json
 import random
 import numpy as np
@@ -9,7 +10,6 @@ import nltk.tokenize as nltok
 import torch
 import torch.autograd as autograd
 import torch.utils.data as tud
-import collections
 
 class Preprocessor():
 
@@ -71,7 +71,7 @@ class Preprocessor():
 class Dataset(tud.Dataset):
 
     def __init__(self, data_json, preproc,
-                 batch_size, max_len=100):
+                 batch_size, max_len=50):
 
         data = read_data_json(data_json)
         self.preproc = preproc
@@ -84,9 +84,24 @@ class Dataset(tud.Dataset):
 
         pairs = [preproc.preprocess(*pair) for pair in pairs]
 
-        pairs.sort(key=lambda x : (len(x[0]), len(x[1])))
+        # Filter utterances that are too long.
         filt_fn = lambda x : all(len(i) < max_len for i in x)
         pairs = filter(filt_fn, pairs)
+
+        bucket_diff = 4
+        max_len = max(len(b) for _, b in pairs)
+        num_buckets = (max_len // bucket_diff) ** 2
+        buckets = [[] for _ in range(num_buckets)]
+        for d in pairs:
+            bid = min(len(d[1]) // bucket_diff, num_buckets - 1)
+            buckets[bid].append(d)
+
+        # Sort by input length followed by output length
+        sort_fn = lambda x : (len(x[0]), len(x[1]))
+        for b in buckets:
+            b.sort(key=sort_fn)
+        pairs = [d for b in buckets for d in b]
+
         self.data = pairs
 
     def __len__(self):
