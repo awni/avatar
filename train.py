@@ -66,7 +66,6 @@ def eval_dev(model, ldr):
     print("Dev Loss: {:.2f}".format(avg_loss))
     return avg_loss
 
-
 def run(config):
 
     opt_cfg = config["optimizer"]

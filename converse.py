@@ -13,18 +13,27 @@ class Converser:
     def __init__(self, model_path, use_cuda=False):
         loaded = utils.load(model_path, tag="best")
         self.model, self.preproc = loaded
-        self.model.cuda() if use_cuda else self.model.cpu()
+        model, preproc = self.model, self.preproc
+
+        model.cuda() if use_cuda else model.cpu()
         self.use_cuda = use_cuda
+
+        # For decoding
+        self.start = preproc.word_to_int[preproc.START]
+        self.end = preproc.word_to_int[preproc.END]
+        self.beam_size = 5
+        self.max_len = 20
 
     def reply(self, query):
         toks = self.preproc.tokenize(query.lower())
         toks = self.preproc.encode(toks)
         toks = torch.autograd.Variable(torch.LongTensor(toks))
         toks.volatile = True
+        if self.use_cuda:
+            toks = toks.cuda()
         toks = toks.unsqueeze(dim=0)
-
-        response, _ = self.model.decode_test(toks)
-        response = response.cpu().data.numpy().squeeze()
+        response, score = self.model.beam_search(toks, self.start,
+                            self.end, self.beam_size, self.max_len)
         response = self.preproc.decode(response)
         return self.untokenize(response)
 
@@ -51,7 +60,7 @@ if __name__ == "__main__":
         help="A path to a saved model.")
     args = parser.parse_args()
 
-    use_cuda = False #torch.cuda.is_available()
+    use_cuda = torch.cuda.is_available()
     converser = Converser(args.model_path, use_cuda)
     while True:
         query = raw_input("You: ")

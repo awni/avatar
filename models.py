@@ -58,16 +58,16 @@ class Seq2Seq(nn.Module):
         inputs = self.embedding(y[:, :-1])
 
         out = []; aligns = []
-        hx = None
+        hx = None; sx = None
         for t in range(y.size()[1] - 1):
             ix = inputs[:, t:t+1, :]
-            # ix = ix + sx if sx is not None # could do input feeding..
+            #ix = ix if sx is None else ix + sx
 
             ox, hx = self.dec_rnn(ix, hx=hx)
-            sx, ax = self.attend(x, ox) # ox could be first or last h-state
+            sx, ax = self.attend(x, ox)
 
             aligns.append(ax)
-            out.append(ox + sx) # this could be a concat
+            out.append(ox + sx)
 
         out = torch.cat(out, dim=1)
         b, t, h = out.size()
@@ -78,7 +78,7 @@ class Seq2Seq(nn.Module):
         aligns = torch.cat(aligns, dim=0)
         return out, aligns
 
-    def decode_step(self, x, y, hx=None):
+    def decode_step(self, x, y, hx=None, softmax=False):
         """
         x should be shape (batch, time, hidden dimension)
         y should be shape (batch, 1)
@@ -88,25 +88,43 @@ class Seq2Seq(nn.Module):
         sx, _ = self.attend(x, ox)
         out = ox + sx
         out = self.fc(out.squeeze(dim=1))
+        if softmax:
+            out = nn.functional.log_softmax(out)
+
         return out, hx
 
-    def decode_test(self, x, max_len=20):
-        # *NB* Assuming first slice of x is start token.
-        y = x[:, 0:1]
+    def beam_search(self, x, start_tok, end_tok,
+                    beam_size, max_len):
+        y = x[:, 0:1].clone()
         x = self.encode(x)
-        hx = None
-        labels = [y]
-        acts = []
+        beam = [((start_tok,), 0, None)];
+        complete = []
         for _ in range(max_len):
-            out, hx = self.decode_step(x, y, hx=hx)
-            acts.append(out)
-            _, y = torch.max(out, dim=1, keepdim=True)
-            labels.append(y)
-            # TODO, check if y already ended and stop
+            new_beam = []
+            for hyp, score, hx in beam:
 
-        acts = torch.stack(acts, dim=1)
-        labels = torch.cat(labels, dim=1)
-        return labels, acts
+                y[0] = hyp[-1]
+                out, hx = self.decode_step(x, y, hx=hx, softmax=True)
+                out = out.cpu().data.numpy().squeeze(axis=0).tolist()
+                for i, p in enumerate(out):
+                    new_score = score + p
+                    new_hyp = hyp + (i,)
+                    new_beam.append((new_hyp, new_score, hx))
+            new_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)
+
+            # Remove complete hypotheses
+            for cand in new_beam[:beam_size]:
+                if cand[0][-1] == end_tok:
+                    complete.append(cand)
+            if len(complete) >= beam_size:
+                complete = complete[:beam_size]
+                break
+            beam = filter(lambda x : x[0][-1] != end_tok, new_beam)
+            beam = beam[:beam_size]
+
+        complete = sorted(complete, key=lambda x: x[1], reverse=True)
+        hyp, score, _ = complete[0]
+        return hyp, score
 
 class Attention(nn.Module):
 
