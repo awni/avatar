@@ -21,8 +21,8 @@ class Converser:
         # For decoding
         self.start = preproc.word_to_int[preproc.START]
         self.end = preproc.word_to_int[preproc.END]
-        self.beam_size = 5
-        self.max_len = 20
+        self.beam_size = 1
+        self.max_len = 50
 
     def reply(self, query):
         toks = self.preproc.tokenize(query.lower())

@@ -46,6 +46,9 @@ class Seq2Seq(nn.Module):
         return out
 
     def encode(self, x):
+        # Drop the start token on the input, seems to help results.
+        x = x[:, 1:]
+
         x = self.embedding(x)
         x, h = self.enc_rnn(x)
         return x
